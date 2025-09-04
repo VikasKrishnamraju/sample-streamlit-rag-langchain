@@ -59,6 +59,9 @@ A comprehensive Retrieval-Augmented Generation (RAG) chat application built with
    Create a `.env` file in the root directory:
    ```bash
    LITELLM_API_KEY=your_api_key_here
+   LITELLM_BASE_URL=https://your-litellm-endpoint.com
+   LITELLM_MODEL=anthropic/claude-sonnet-4-20250514
+   LITELLM_EMBEDDING_MODEL=text-embedding-3-small
    ```
 
 5. **Initialize the database:**
@@ -75,9 +78,12 @@ A comprehensive Retrieval-Augmented Generation (RAG) chat application built with
 
 ### Environment Variables
 
-The application requires the following environment variable in your `.env` file:
+The application requires the following environment variables in your `.env` file:
 
 - `LITELLM_API_KEY`: Your LiteLLM API key for accessing the chat model and embeddings
+- `LITELLM_BASE_URL`: The base URL for your LiteLLM endpoint
+- `LITELLM_MODEL`: The chat model to use (default: anthropic/claude-sonnet-4-20250514)
+- `LITELLM_EMBEDDING_MODEL`: The embedding model to use (default: text-embedding-3-small)
 
 ### Model Configuration
 

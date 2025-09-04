@@ -15,11 +15,11 @@ environ.Env.read_env()
 class LiteLLMEmbeddings(Embeddings):
     """Custom LiteLLM embeddings using internal endpoint"""
     
-    def __init__(self, model: str = "text-embedding-3-small"):
+    def __init__(self, model: str = env("LITELLM_EMBEDDING_MODEL")):
         # Set up environment for LiteLLM
         os.environ["OPENAI_API_KEY"] = env("LITELLM_API_KEY")
         self.model = model
-        self.api_base = "https://litellm.int.thomsonreuters.com"
+        self.api_base = env("LITELLM_BASE_URL")
         
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Embed a list of documents"""

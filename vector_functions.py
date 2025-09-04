@@ -25,8 +25,8 @@ environ.Env.read_env()
 def get_lite_llm_model():
     os.environ["ANTHROPIC_API_KEY"] = env("LITELLM_API_KEY")
     model = ChatLiteLLM(
-            model="anthropic/claude-sonnet-4-20250514",  # Provider must be specified
-            api_base="https://litellm.int.thomsonreuters.com",  # optional, for custom endpoints
+            model=env("LITELLM_MODEL"),  # Provider must be specified
+            api_base=env("LITELLM_BASE_URL"),  # optional, for custom endpoints
             temperature=0
     )
     return model
