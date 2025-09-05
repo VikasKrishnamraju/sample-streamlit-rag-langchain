@@ -8,6 +8,7 @@ from urllib3.util.ssl_ import create_urllib3_context
 from bs4 import BeautifulSoup
 from langchain_core.documents import Document
 import math
+from ragas_eval import eval_thr_ragas 
 from db import (
     read_chat,
     create_chat,
@@ -168,7 +169,12 @@ def chat_page(chat_id):
     Returns:
         None
     """
-
+    # Initialize RAGAS scores in session state if not exists
+    if f"answer_relevancy_{chat_id}" not in st.session_state:
+        st.session_state[f"answer_relevancy_{chat_id}"] = None
+    if f"faithfulness_{chat_id}" not in st.session_state:
+        st.session_state[f"faithfulness_{chat_id}"] = None
+    
     chat = read_chat(chat_id)
     if not chat:
         st.error("Chat not found")
@@ -215,18 +221,29 @@ def chat_page(chat_id):
             retriever = None
 
         # Ask question using the retriever
-        response = (
-            generate_answer_from_context(retriever, prompt)
-            if retriever
-            else "I need some context to answer that question."
-        )
+        if retriever:
+            response = generate_answer_from_context(retriever, prompt)
+            # Save AI response
+            create_message(chat_id, "ai", response)
+            # Display AI response
+            with st.chat_message("assistant"):
+                 st.write_stream(stream_response(response)) 
 
-        # Save AI response
-        create_message(chat_id, "ai", response)
-        # Display AI response
-        with st.chat_message("assistant"):
-            st.write_stream(stream_response(response))
+            # Get retrieved contexts for RAGAS evaluation
+            try:
+                retrieved_docs = retriever.get_relevant_documents(prompt)
+                retrieved_contexts = [doc.page_content for doc in retrieved_docs]
 
+                # Ragas Eval Initial Test
+                ragas_eval_ans = eval_thr_ragas(prompt, response, retrieved_contexts)
+                if ragas_eval_ans is not None:
+                    st.session_state[f"answer_relevancy_{chat_id}"] = f"{ragas_eval_ans['answer_relevancy'][0]:.2f}"
+                    st.session_state[f"faithfulness_{chat_id}"] = f"{ragas_eval_ans['faithfulness'][0]:.2f}"
+
+            except Exception as e:
+                print(f"Error during RAGAS evaluation: {e}")
+        else:
+            response = "I need some context to answer that question."
         st.rerun()
 
     # Sidebar for context
@@ -237,6 +254,12 @@ def chat_page(chat_id):
             st.rerun()
 
         st.subheader(f"{chat[1]}")
+
+        st.sidebar.subheader("RAGAS Scores")
+        if st.session_state[f"answer_relevancy_{chat_id}"] is not None:
+            st.sidebar.metric("Answer Relevancy ↗", st.session_state[f"answer_relevancy_{chat_id}"])
+        if st.session_state[f"faithfulness_{chat_id}"] is not None:
+            st.sidebar.metric("Faithfulness ↗", st.session_state[f"faithfulness_{chat_id}"])
 
         # Documents Section
         st.subheader("📑 Documents")
@@ -351,7 +374,6 @@ def chat_page(chat_id):
                         # Save link to database
                         create_source(new_link, "", chat_id, source_type="link")
                         st.success(f"Added link: {new_link}")
-                        st.text_input("")
                         del st.session_state["add_link_btn"]
                         st.rerun()
                     except Exception as e:

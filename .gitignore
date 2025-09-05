@@ -8,3 +8,4 @@ pdf/
 .venv/
 .DS_Store
 .streamlit/
+*.csv

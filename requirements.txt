@@ -131,6 +131,7 @@ python-oxmsg==0.0.1
 pytz==2024.2
 PyYAML==6.0.2
 RapidFuzz==3.10.1
+ragas==0.3.2
 referencing==0.35.1
 regex==2024.9.11
 requests==2.32.3

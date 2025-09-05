@@ -3,7 +3,7 @@ import sqlite3
 
 # Connect to SQLite database
 def connect_db():
-    return sqlite3.connect("doc_sage.sqlite")
+    return sqlite3.connect("rag_meta.sqlite")
 
 
 # CRUD Operations for 'chat' table

@@ -17,6 +17,7 @@ A comprehensive Retrieval-Augmented Generation (RAG) chat application built with
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [RAGAS Evaluation](#ragas-evaluation)
 - [File Structure](#file-structure)
 - [Implementation Guide](#implementation-guide)
 - [API Reference](#api-reference)
@@ -123,6 +124,97 @@ The application is configured to use:
 3. Responses are streamed in real-time with a typing effect
 4. All conversations are automatically saved
 
+## 📊 RAGAS Evaluation
+
+RAGAS (Retrieval-Augmented Generation Assessment) is integrated into the application for comprehensive evaluation of RAG performance. The implementation provides objective metrics to assess the quality of retrievals and generated responses.
+
+### Features
+
+- **Faithfulness**: Measures whether the generated answer is faithful to the retrieved contexts
+- **Answer Relevancy**: Evaluates how relevant the generated answer is to the user's question
+- **Context Precision**: Assesses the precision of the retrieved contexts
+- **Context Recall**: Measures the recall of the retrieved contexts
+- **Context Entity Recall**: Evaluates entity-level recall in retrieved contexts
+
+### Implementation
+
+The RAGAS evaluation is implemented in `ragas_eval.py` with the following key components:
+
+#### Core Function: `eval_thr_ragas()`
+
+```python
+def eval_thr_ragas(query, answer, retrieved_contexts):
+    """
+    Evaluate RAG performance using RAGAS metrics.
+    
+    Args:
+        query (str): The user's question
+        answer (str): The generated answer
+        retrieved_contexts (list): List of retrieved context strings
+        
+    Returns:
+        dict: RAGAS evaluation scores
+    """
+```
+
+#### Supported Metrics
+
+- **Faithfulness**: Ensures generated answers are grounded in retrieved contexts
+- **Answer Relevancy**: Measures how well answers address the specific question
+- **Context Precision**: Evaluates retrieval quality and ranking
+- **Context Recall**: Assesses completeness of retrieved information
+- **Context Entity Recall**: Entity-level evaluation of retrieved contexts
+
+### Usage Example
+
+```python
+from ragas_eval import eval_thr_ragas
+
+# Example evaluation
+query = "What is the capital of France?"
+answer = "The capital of France is Paris."
+contexts = ["Paris is the capital and largest city of France."]
+
+scores = eval_thr_ragas(query, answer, contexts)
+print(f"Evaluation scores: {scores}")
+```
+
+### Configuration
+
+The RAGAS evaluation uses:
+- **LLM**: Same LiteLLM model configured for the main application
+- **Embeddings**: text-embedding-3-small via LiteLLM
+- **Output**: Results are saved to `EvaluationScores.csv`
+
+### Metrics Interpretation
+
+- **Faithfulness (0-1)**: Higher scores indicate answers are more faithful to contexts
+- **Answer Relevancy (0-1)**: Higher scores indicate more relevant answers
+- **Context Precision (0-1)**: Higher scores indicate better context ranking
+- **Context Recall (0-1)**: Higher scores indicate more complete context retrieval
+- **Context Entity Recall (0-1)**: Higher scores indicate better entity coverage
+
+### Running Evaluations
+
+1. **Single Evaluation**:
+   ```python
+   from ragas_eval import eval_thr_ragas
+   scores = eval_thr_ragas(query, answer, contexts)
+   ```
+
+2. **Batch Evaluation**:
+   The function supports batch processing with lists of queries, answers, and contexts.
+
+3. **Output Analysis**:
+   Results are automatically saved to `EvaluationScores.csv` for further analysis.
+
+### Error Handling
+
+The implementation includes robust error handling:
+- Input validation and format conversion
+- Fallback mechanisms for API failures
+- Detailed error logging for debugging
+
 ## 📁 File Structure
 
 ```
@@ -133,9 +225,12 @@ sample-streamlit-rag-langchain/
 ├── vector_functions.py         # Vector store and RAG functionality
 ├── litellm_embeddings.py       # Custom LiteLLM embeddings wrapper
 ├── create_relational_db.py     # Database initialization script
+├── ragas_eval.py               # RAGAS evaluation implementation
+├── g_eval.py                   # G-Eval implementation (placeholder)
 ├── requirements.txt            # Python dependencies
 ├── .gitignore                  # Git ignore patterns
 ├── .env                        # Environment variables (not committed)
+├── EvaluationScores.csv        # RAGAS evaluation results output
 │
 ├── temp_files/                 # Temporary file storage
 ├── persist/                    # ChromaDB persistence directory
@@ -257,6 +352,36 @@ python create_relational_db.py
 
 Creates SQLite database `doc_sage.sqlite` with proper schema and relationships.
 
+#### 6. RAGAS Evaluation (`ragas_eval.py`)
+
+**Purpose**: Comprehensive evaluation framework for RAG system performance using multiple metrics.
+
+**Key Functions**:
+- `eval_thr_ragas(query, answer, retrieved_contexts)`: Main evaluation function
+- Input validation and format conversion for RAGAS compatibility
+- Integration with LiteLLM models and embeddings
+- CSV export functionality for result analysis
+
+**Implementation Details**:
+- Supports both single and batch evaluations
+- Handles various input formats (strings, lists)
+- Robust error handling with detailed logging
+- Automatic result persistence to CSV files
+- Compatible with existing LiteLLM configuration
+
+**Usage Integration**:
+```python
+from ragas_eval import eval_thr_ragas
+from vector_functions import generate_answer_from_context
+
+# Generate answer using RAG
+answer = generate_answer_from_context(retriever, query)
+contexts = [doc.page_content for doc in retriever.get_relevant_documents(query)]
+
+# Evaluate with RAGAS
+scores = eval_thr_ragas(query, answer, contexts)
+```
+
 ### Data Flow
 
 1. **Document Upload**:
@@ -272,6 +397,11 @@ Creates SQLite database `doc_sage.sqlite` with proper schema and relationships.
 3. **Chat Query**:
    ```
    User Question → Vector Similarity Search → Context Retrieval → LLM Processing → Streamed Response
+   ```
+
+4. **RAGAS Evaluation**:
+   ```
+   Query + Answer + Contexts → RAGAS Metrics Calculation → Score Generation → CSV Export
    ```
 
 ### RAG Implementation
@@ -306,6 +436,26 @@ delete_messages(chat_id: int) -> None
 create_source(name: str, source_text: str, chat_id: int, source_type: str) -> None
 list_sources(chat_id: int, source_type: str = None) -> list[tuple]
 delete_source(source_id: int) -> None
+```
+
+### RAGAS Evaluation Functions
+
+```python
+# Main evaluation function
+eval_thr_ragas(query: str, answer: str, retrieved_contexts: list) -> dict
+
+# Input format examples
+query = "What is machine learning?"
+answer = "Machine learning is a subset of artificial intelligence..."
+contexts = ["Machine learning (ML) is a field of study...", "AI encompasses..."]
+
+# Returns evaluation scores
+scores = {
+    'faithfulness': 0.85,
+    'answer_relevancy': 0.92,
+    'context_precision': 0.78,
+    'context_recall': 0.88
+}
 ```
 
 ### Vector Functions
