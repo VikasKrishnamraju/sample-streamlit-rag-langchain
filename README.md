@@ -126,116 +126,203 @@ The application is configured to use:
 
 ## 📊 RAGAS Evaluation
 
-RAGAS (Retrieval-Augmented Generation Assessment) is integrated into the application for comprehensive evaluation of RAG performance. The implementation provides objective metrics to assess the quality of retrievals and generated responses.
+RAGAS (Retrieval-Augmented Generation Assessment) provides comprehensive evaluation metrics for RAG system performance. The implementation offers objective assessment of retrieval quality and response generation effectiveness.
 
-### Features
+### Core Metrics
 
-- **Faithfulness**: Measures whether the generated answer is faithful to the retrieved contexts
-- **Answer Relevancy**: Evaluates how relevant the generated answer is to the user's question
-- **Context Precision**: Assesses the precision of the retrieved contexts
-- **Context Recall**: Measures the recall of the retrieved contexts
-- **Context Entity Recall**: Evaluates entity-level recall in retrieved contexts
+- **Faithfulness**: Measures answer grounding in retrieved contexts
+- **Answer Relevancy**: Evaluates question-answer alignment  
+- **Context Precision**: Assesses retrieval ranking quality
+- **Context Recall**: Measures information completeness
+- **Context Entity Recall**: Evaluates entity-level coverage
+
+### Evaluation Flow
+
+```
+Input: Query + Generated Answer + Retrieved Contexts
+    ↓
+RAGAS Metric Calculation (using LiteLLM models)
+    ↓  
+Score Generation (0-1 range for each metric)
+    ↓
+CSV Export (EvaluationScores.csv)
+```
 
 ### Implementation
 
-The RAGAS evaluation is implemented in `ragas_eval.py` with the following key components:
+**File**: `ragas_eval.py`  
+**Function**: `eval_thr_ragas(query, answer, retrieved_contexts)`  
+**Output**: Dictionary with metric scores + CSV file  
+**Configuration**: Uses same LiteLLM setup as main application
 
-#### Core Function: `eval_thr_ragas()`
+### Usage Scenarios
 
-```python
-def eval_thr_ragas(query, answer, retrieved_contexts):
-    """
-    Evaluate RAG performance using RAGAS metrics.
-    
-    Args:
-        query (str): The user's question
-        answer (str): The generated answer
-        retrieved_contexts (list): List of retrieved context strings
-        
-    Returns:
-        dict: RAGAS evaluation scores
-    """
+1. **Single Evaluation**: Test individual query-answer pairs
+2. **Batch Processing**: Evaluate multiple conversations at once
+3. **Performance Monitoring**: Track RAG system quality over time
+4. **A/B Testing**: Compare different retrieval or generation strategies
+
+---
+
+## 🧪 Test Data Generation
+
+Automated generation of high-quality test datasets for RAG system evaluation using RAGAS framework. Multiple approaches available for different use cases and frameworks.
+
+### Available Generators
+
+| Generator | Framework | Status | Best For |
+|-----------|-----------|--------|----------|
+| `generate_testdata_correct.py` | Pure RAGAS | ✅ Stable | Production use, most reliable |
+| `generate_testdata_langchain.py` | LangChain + RAGAS | ✅ Stable | LangChain workflows |
+| `generate_testdata_llama_index.py` | LlamaIndex + RAGAS | ⚠️ Dependency conflicts | Advanced document parsing |
+| `generate_simple_testdata.py` | Custom | ✅ Simple | Quick prototyping |
+
+### Test Data Generation Flow
+
+```
+PDF Documents (pdf/ directory)
+    ↓
+Document Loading & Preprocessing
+    ↓
+Text Chunking & Splitting
+    ↓
+Knowledge Graph Construction
+    ↓
+Persona Generation (user types/roles)
+    ↓
+Scenario Creation (question contexts)
+    ↓
+Question-Answer Pair Generation
+    ↓
+Quality Filtering & Validation
+    ↓
+CSV Export (TestData_*.csv)
 ```
 
-#### Supported Metrics
+### Generation Process Details
 
-- **Faithfulness**: Ensures generated answers are grounded in retrieved contexts
-- **Answer Relevancy**: Measures how well answers address the specific question
-- **Context Precision**: Evaluates retrieval quality and ranking
-- **Context Recall**: Assesses completeness of retrieved information
-- **Context Entity Recall**: Entity-level evaluation of retrieved contexts
+#### 1. Document Processing
+- **Input**: PDF files from `pdf/` directory
+- **Processing**: Text extraction, cleaning, chunking
+- **Chunking Strategy**: Recursive character splitting with overlap
+- **Optimization**: Chunk size 800 chars, overlap 50 chars
 
-### Usage Example
+#### 2. Knowledge Graph Construction
+- **Purpose**: Understanding document relationships and entities
+- **Components**: Entity extraction, theme identification, relationship mapping
+- **Output**: Structured knowledge representation for question generation
 
-```python
-from ragas_eval import eval_thr_ragas
+#### 3. Persona Development
+- **Concept**: Different user types who would ask questions about the content
+- **Examples**: Domain experts, beginners, analysts, decision-makers
+- **Impact**: Ensures diverse question styles and complexity levels
 
-# Example evaluation
-query = "What is the capital of France?"
-answer = "The capital of France is Paris."
-contexts = ["Paris is the capital and largest city of France."]
+#### 4. Scenario Generation
+- **Process**: Creating realistic contexts where questions would arise
+- **Variety**: Different use cases, urgency levels, information needs
+- **Quality**: Scenarios ground questions in realistic user interactions
 
-scores = eval_thr_ragas(query, answer, contexts)
-print(f"Evaluation scores: {scores}")
+#### 5. Question-Answer Synthesis
+- **Question Types**: Factual, analytical, comparative, summarization
+- **Answer Generation**: Grounded in document content with proper citations
+- **Quality Control**: Relevance filtering, coherence checking
+
+### Output Format
+
+Generated test datasets include:
+- **user_input**: Natural language questions
+- **reference_contexts**: Relevant document excerpts
+- **reference**: Ground truth answers
+- **synthesizer_name**: Generation method identifier
+
+### Configuration & Setup
+
+#### Prerequisites
+```bash
+# System dependencies (macOS)
+brew install libmagic
+
+# Python packages
+pip install ragas==0.3.2
+pip install "unstructured[pdf]==0.16.4"
 ```
 
-### Configuration
+#### Environment Requirements
+- LiteLLM API access configured in `.env`
+- PDF documents in `pdf/` directory
+- Sufficient API quota for generation process
 
-The RAGAS evaluation uses:
-- **LLM**: Same LiteLLM model configured for the main application
-- **Embeddings**: text-embedding-3-small via LiteLLM
-- **Output**: Results are saved to `EvaluationScores.csv`
+### Best Practices
 
-### Metrics Interpretation
+#### Document Selection
+- **Quality**: Use well-structured, informative PDFs
+- **Diversity**: Include different content types and complexity levels
+- **Size**: Start with 2-3 documents for initial testing
 
-- **Faithfulness (0-1)**: Higher scores indicate answers are more faithful to contexts
-- **Answer Relevancy (0-1)**: Higher scores indicate more relevant answers
-- **Context Precision (0-1)**: Higher scores indicate better context ranking
-- **Context Recall (0-1)**: Higher scores indicate more complete context retrieval
-- **Context Entity Recall (0-1)**: Higher scores indicate better entity coverage
+#### Generation Parameters
+- **Test Size**: Begin with 2-3 test cases, scale gradually
+- **Chunk Size**: Adjust based on document complexity
+- **Error Handling**: Always enable `raise_exceptions=False`
 
-### Running Evaluations
+#### Quality Assurance
+- **Manual Review**: Inspect generated questions for coherence
+- **Diversity Check**: Ensure varied question types and difficulty
+- **Context Validation**: Verify answers are grounded in provided contexts
 
-1. **Single Evaluation**:
-   ```python
-   from ragas_eval import eval_thr_ragas
-   scores = eval_thr_ragas(query, answer, contexts)
-   ```
+### Troubleshooting
 
-2. **Batch Evaluation**:
-   The function supports batch processing with lists of queries, answers, and contexts.
+#### Common Issues
+- **Dependency Conflicts**: Use compatible package versions
+- **API Timeouts**: Reduce test generation size
+- **Document Processing**: Verify PDF accessibility and format
+- **Memory Issues**: Process smaller document batches
 
-3. **Output Analysis**:
-   Results are automatically saved to `EvaluationScores.csv` for further analysis.
+#### Performance Optimization
+- **Batch Size**: Generate 2-5 test cases per run initially  
+- **Chunking**: Optimize chunk size for your document types
+- **Caching**: Reuse processed documents when possible
+- **Monitoring**: Track API usage and processing time
 
-### Error Handling
+### Integration with Evaluation
 
-The implementation includes robust error handling:
-- Input validation and format conversion
-- Fallback mechanisms for API failures
-- Detailed error logging for debugging
+The generated test data integrates seamlessly with the RAGAS evaluation system:
+
+```
+Generated Test Data → RAG System Processing → RAGAS Evaluation → Performance Metrics
+```
+
+This creates a complete testing and evaluation pipeline for continuous RAG system improvement.
 
 ## 📁 File Structure
 
 ```
 sample-streamlit-rag-langchain/
 │
-├── chats.py                    # Main Streamlit application
-├── db.py                       # Database operations and SQLite management
-├── vector_functions.py         # Vector store and RAG functionality
-├── litellm_embeddings.py       # Custom LiteLLM embeddings wrapper
-├── create_relational_db.py     # Database initialization script
-├── ragas_eval.py               # RAGAS evaluation implementation
-├── g_eval.py                   # G-Eval implementation (placeholder)
-├── requirements.txt            # Python dependencies
-├── .gitignore                  # Git ignore patterns
-├── .env                        # Environment variables (not committed)
-├── EvaluationScores.csv        # RAGAS evaluation results output
+├── chats.py                         # Main Streamlit application
+├── db.py                           # Database operations and SQLite management
+├── vector_functions.py             # Vector store and RAG functionality
+├── litellm_embeddings.py           # Custom LiteLLM embeddings wrapper
+├── create_relational_db.py         # Database initialization script
+├── ragas_eval.py                   # RAGAS evaluation implementation
+├── g_eval.py                       # G-Eval implementation (placeholder)
 │
-├── temp_files/                 # Temporary file storage
-├── persist/                    # ChromaDB persistence directory
-├── pdf/                        # PDF storage directory
-└── __pycache__/               # Python cache files
+├── generate_testdata_correct.py    # ✅ Primary RAGAS test generator
+├── generate_testdata_langchain.py  # ✅ LangChain-based test generator  
+├── generate_testdata_llama_index.py # ⚠️ LlamaIndex test generator
+├── generate_simple_testdata.py     # ✅ Simple CSV test generator
+│
+├── requirements.txt                # Python dependencies
+├── .gitignore                      # Git ignore patterns
+├── .env                           # Environment variables (not committed)
+├── README.md                      # Project documentation
+│
+├── EvaluationScores.csv           # RAGAS evaluation results
+├── TestData_From_Ragas_*.csv      # Generated test datasets
+│
+├── temp_files/                    # Temporary file storage
+├── persist/                       # ChromaDB persistence directory
+├── pdf/                           # PDF storage directory (place your PDFs here)
+└── __pycache__/                   # Python cache files
 ```
 
 ## 🔧 Implementation Guide
@@ -368,6 +455,39 @@ Creates SQLite database `doc_sage.sqlite` with proper schema and relationships.
 - Robust error handling with detailed logging
 - Automatic result persistence to CSV files
 - Compatible with existing LiteLLM configuration
+
+#### 7. Test Data Generators
+
+**Purpose**: Automated generation of high-quality test datasets for RAG system evaluation.
+
+**Available Generators**:
+
+**`generate_testdata_correct.py` (Recommended)**
+- Pure RAGAS implementation with maximum stability
+- Full pipeline: document processing → knowledge graphs → persona generation → test synthesis
+- Output: `TestData_From_Ragas_Correct.csv`
+
+**`generate_testdata_langchain.py`**
+- LangChain-based document processing with RAGAS generation
+- Optimized for LangChain workflows and existing integrations
+- Output: `TestData_From_Ragas_Langchain.csv`
+
+**`generate_testdata_llama_index.py`**
+- LlamaIndex document parsing with advanced node processing
+- Currently has dependency conflicts (Pydantic version issues)
+- Output: `TestData_From_Ragas_Llama.csv`
+
+**`generate_simple_testdata.py`**
+- Custom implementation for quick prototyping
+- Manual question-answer generation from document content
+- Output: `TestData_Simple.csv`
+
+**Common Features**:
+- PDF document processing from `pdf/` directory
+- Configurable test dataset size and complexity
+- Integration with existing LiteLLM configuration
+- Comprehensive error handling and logging
+- CSV export with standardized format
 
 **Usage Integration**:
 ```python
