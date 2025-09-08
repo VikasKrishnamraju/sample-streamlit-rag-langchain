@@ -9,3 +9,4 @@ pdf/
 .DS_Store
 .streamlit/
 *.csv
+*.json
