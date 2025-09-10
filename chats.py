@@ -30,24 +30,37 @@ from vector_functions import (
 )
 
 
-# def create_secure_session():
-#     """Create a requests session with proper SSL configuration"""
-#     session = requests.Session()
+def create_secure_session():
+    """Create a requests session with enterprise SSL certificate configuration"""
+    session = requests.Session()
     
-#     # Create SSL context
-#     ctx = create_urllib3_context()
-#     ctx.check_hostname = False
-#     ctx.verify_mode = ssl.CERT_REQUIRED
-#     ctx.load_verify_locations(certifi.where())
+    # Use final complete certificate bundle with all certificates in chain
+    cert_bundle_path = "/Users/a0144076/sample-streamlit-rag-langchain/corp-bundle-final-complete.pem"
     
-#     # Custom adapter
-#     class SSLAdapter(HTTPAdapter):
-#         def init_poolmanager(self, *args, **kwargs):
-#             kwargs['ssl_context'] = ctx
-#             return super().init_poolmanager(*args, **kwargs)
+    # Create SSL context with enterprise certificates
+    ctx = create_urllib3_context()
+    ctx.check_hostname = True
+    ctx.verify_mode = ssl.CERT_REQUIRED
     
-#     session.mount('https://', SSLAdapter())
-#     return session
+    # Load enterprise certificate bundle and system certificates
+    if os.path.exists(cert_bundle_path):
+        ctx.load_verify_locations(cert_bundle_path)
+        # Also load system keychain certificates (macOS)
+        ctx.load_default_certs()
+        print(f"Using enterprise certificate bundle + system keychain: {cert_bundle_path}")
+    else:
+        ctx.load_verify_locations(certifi.where())
+        ctx.load_default_certs()
+        print("Using default certificate bundle + system keychain")
+    
+    # Custom adapter
+    class SSLAdapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            kwargs['ssl_context'] = ctx
+            return super().init_poolmanager(*args, **kwargs)
+    
+    session.mount('https://', SSLAdapter())
+    return session
 
 
 def chats_home():
@@ -342,10 +355,9 @@ def chat_page(chat_id):
                         headers = {
                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36"
                         }
-                        # Use secure session with proper SSL configuration
-                        #session = create_secure_session()
-                        #response = session.get(new_link, headers=headers, timeout=30)
-                        response = requests.get(new_link, headers=headers, verify=False)
+                        # Use secure session with enterprise SSL configuration
+                        session = create_secure_session()
+                        response = session.get(new_link, headers=headers, timeout=30)
                         soup = BeautifulSoup(response.text, "html.parser")
 
                         # Check if the content was successfully retrieved
