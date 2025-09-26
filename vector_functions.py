@@ -2,10 +2,8 @@ import os
 from langchain_community.chat_models import ChatLiteLLM
 from litellm_embeddings import LiteLLMEmbeddings
 from langchain_chroma import Chroma
-#from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_text_splitters import CharacterTextSplitter
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_community.document_loaders import (
@@ -23,24 +21,16 @@ env = environ.Env()
 environ.Env.read_env()
 
 def get_lite_llm_model():
-    os.environ["ANTHROPIC_API_KEY"] = env("LITELLM_API_KEY")
+    """Initialize and return a LiteLLM chat model with enterprise configuration."""
+    os.environ["ANTHROPIC_API_KEY"] = env("LITELLM_API_KEY")  # Fixed: Use consistent naming
     model = ChatLiteLLM(
-            model=env("LITELLM_MODEL"),  # Provider must be specified
-            api_base=env("LITELLM_BASE_URL"),  # optional, for custom endpoints
+            model=env("LITELLM_MODEL"),
+            api_base=env("LITELLM_BASE_URL"),
             temperature=0
     )
     return model
 
 embeddings = LiteLLMEmbeddings(model="text-embedding-3-small")
-
-# llm = ChatOpenAI(
-#     model="gpt-4o-mini",
-#     api_key=env("OPENAI_API_KEY"),
-# )
-
-# embeddings = OpenAIEmbeddings(
-#     api_key=env("OPENAI_API_KEY"),
-# )
 
 text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
 

@@ -8,7 +8,8 @@ from urllib3.util.ssl_ import create_urllib3_context
 from bs4 import BeautifulSoup
 from langchain_core.documents import Document
 import math
-from ragas_eval import eval_thr_ragas 
+# from ragas_eval import eval_thr_ragas  # Commented out - using Braintrust LLM-as-a-Judge instead
+from braintrust_realtime_eval import eval_and_log_realtime_response 
 from db import (
     read_chat,
     create_chat,
@@ -30,12 +31,72 @@ from vector_functions import (
 )
 
 
+def _run_evaluations(prompt: str, response: str, retriever, chat_id: str):
+    """Run RAGAS and Braintrust LLM-as-a-Judge evaluations on the response."""
+    try:
+        retrieved_docs = retriever.get_relevant_documents(prompt)
+        retrieved_contexts = [doc.page_content for doc in retrieved_docs]
+
+        # RAGAS Evaluation (COMMENTED OUT - using Braintrust LLM-as-a-Judge instead)
+        # if len(retrieved_contexts) > 0:
+        #     try:
+        #         ragas_eval_ans = eval_thr_ragas(prompt, response, retrieved_contexts)
+        #         if ragas_eval_ans is not None:
+        #             st.session_state[f"answer_relevancy_{chat_id}"] = f"{ragas_eval_ans['answer_relevancy'][0]:.2f}"
+        #             st.session_state[f"faithfulness_{chat_id}"] = f"{ragas_eval_ans['faithfulness'][0]:.2f}"
+        #     except Exception as e:
+        #         print(f"Error during RAGAS evaluation: {e}")
+        # else:
+        #     print("No contexts retrieved - skipping RAGAS evaluation")
+
+        # Braintrust Real-time Evaluation with Individual Traces
+        try:
+            print(f"🔄 Running real-time Braintrust evaluation...")
+            realtime_results = eval_and_log_realtime_response(
+                question=prompt,
+                answer=response,
+                chat_id=str(chat_id)
+            )
+
+            if realtime_results["status"] == "success":
+                scores = realtime_results["scores"]
+                # Update session state with scores
+                _update_session_scores(scores, chat_id)
+
+                print(f"✅ Real-time evaluation successful!")
+                print(f"📊 Scores: {scores}")
+                print(f"📝 Judge outputs: {len(realtime_results.get('judge_outputs', {}))} judges")
+                print(f"🔗 Experiment: {realtime_results['experiment_name']}")
+                print(f"🌐 View at: {realtime_results['experiment_url']}")
+            else:
+                print(f"⚠️ Real-time evaluation failed: {realtime_results.get('error', 'Unknown error')}")
+
+        except Exception as e:
+            print(f"Error during Braintrust real-time evaluation: {e}")
+
+    except Exception as e:
+        print(f"Error during document retrieval: {e}")
+
+def _update_session_scores(scores: dict, chat_id: str):
+    """Update session state with evaluation scores."""
+    score_mappings = {
+        "answer_relevancy_scorer": f"llm_judge_relevancy_{chat_id}",
+        "answer_accuracy_scorer": f"llm_judge_accuracy_{chat_id}",
+        "answer_completeness_scorer": f"llm_judge_completeness_{chat_id}",
+        "ExactMatch": f"exact_match_score_{chat_id}",
+        "Levenshtein": f"levenshtein_score_{chat_id}"
+    }
+
+    for score_key, session_key in score_mappings.items():
+        if score_key in scores:
+            st.session_state[session_key] = f"{scores[score_key]:.2f}"
+
 def create_secure_session():
     """Create a requests session with enterprise SSL certificate configuration"""
     session = requests.Session()
     
     # Use final complete certificate bundle with all certificates in chain
-    cert_bundle_path = "/Users/a0144076/sample-streamlit-rag-langchain/corp-bundle-final-complete.pem"
+    cert_bundle_path = "corp-bundle-final-complete.pem"
     
     # Create SSL context with enterprise certificates
     ctx = create_urllib3_context()
@@ -182,11 +243,23 @@ def chat_page(chat_id):
     Returns:
         None
     """
-    # Initialize RAGAS scores in session state if not exists
-    if f"answer_relevancy_{chat_id}" not in st.session_state:
-        st.session_state[f"answer_relevancy_{chat_id}"] = None
-    if f"faithfulness_{chat_id}" not in st.session_state:
-        st.session_state[f"faithfulness_{chat_id}"] = None
+    # Initialize RAGAS scores in session state if not exists (COMMENTED OUT - using Braintrust instead)
+    # if f"answer_relevancy_{chat_id}" not in st.session_state:
+    #     st.session_state[f"answer_relevancy_{chat_id}"] = None
+    # if f"faithfulness_{chat_id}" not in st.session_state:
+    #     st.session_state[f"faithfulness_{chat_id}"] = None
+
+    # Initialize Braintrust LLM-as-a-Judge scores in session state if not exists
+    if f"llm_judge_relevancy_{chat_id}" not in st.session_state:
+        st.session_state[f"llm_judge_relevancy_{chat_id}"] = None
+    if f"llm_judge_accuracy_{chat_id}" not in st.session_state:
+        st.session_state[f"llm_judge_accuracy_{chat_id}"] = None
+    if f"llm_judge_completeness_{chat_id}" not in st.session_state:
+        st.session_state[f"llm_judge_completeness_{chat_id}"] = None
+    if f"exact_match_score_{chat_id}" not in st.session_state:
+        st.session_state[f"exact_match_score_{chat_id}"] = None
+    if f"levenshtein_score_{chat_id}" not in st.session_state:
+        st.session_state[f"levenshtein_score_{chat_id}"] = None
     
     chat = read_chat(chat_id)
     if not chat:
@@ -242,19 +315,8 @@ def chat_page(chat_id):
             with st.chat_message("assistant"):
                  st.write_stream(stream_response(response)) 
 
-            # Get retrieved contexts for RAGAS evaluation
-            try:
-                retrieved_docs = retriever.get_relevant_documents(prompt)
-                retrieved_contexts = [doc.page_content for doc in retrieved_docs]
-
-                # Ragas Eval Initial Test
-                ragas_eval_ans = eval_thr_ragas(prompt, response, retrieved_contexts)
-                if ragas_eval_ans is not None:
-                    st.session_state[f"answer_relevancy_{chat_id}"] = f"{ragas_eval_ans['answer_relevancy'][0]:.2f}"
-                    st.session_state[f"faithfulness_{chat_id}"] = f"{ragas_eval_ans['faithfulness'][0]:.2f}"
-
-            except Exception as e:
-                print(f"Error during RAGAS evaluation: {e}")
+            # Run evaluations on the response
+            _run_evaluations(prompt, response, retriever, chat_id)
         else:
             response = "I need some context to answer that question."
         st.rerun()
@@ -268,11 +330,26 @@ def chat_page(chat_id):
 
         st.subheader(f"{chat[1]}")
 
-        st.sidebar.subheader("RAGAS Scores")
-        if st.session_state[f"answer_relevancy_{chat_id}"] is not None:
-            st.sidebar.metric("Answer Relevancy ↗", st.session_state[f"answer_relevancy_{chat_id}"])
-        if st.session_state[f"faithfulness_{chat_id}"] is not None:
-            st.sidebar.metric("Faithfulness ↗", st.session_state[f"faithfulness_{chat_id}"])
+        # RAGAS Scores (COMMENTED OUT - using Braintrust LLM-as-a-Judge instead)
+        # st.sidebar.subheader("RAGAS Scores")
+        # if st.session_state[f"answer_relevancy_{chat_id}"] is not None:
+        #     st.sidebar.metric("Answer Relevancy ↗", st.session_state[f"answer_relevancy_{chat_id}"])
+        # if st.session_state[f"faithfulness_{chat_id}"] is not None:
+        #     st.sidebar.metric("Faithfulness ↗", st.session_state[f"faithfulness_{chat_id}"])
+
+        st.sidebar.subheader("🧑‍⚖️ LLM-as-a-Judge Scores")
+        if st.session_state[f"llm_judge_relevancy_{chat_id}"] is not None:
+            st.sidebar.metric("Relevancy ↗", st.session_state[f"llm_judge_relevancy_{chat_id}"])
+        if st.session_state[f"llm_judge_accuracy_{chat_id}"] is not None:
+            st.sidebar.metric("Accuracy ↗", st.session_state[f"llm_judge_accuracy_{chat_id}"])
+        if st.session_state[f"llm_judge_completeness_{chat_id}"] is not None:
+            st.sidebar.metric("Completeness ↗", st.session_state[f"llm_judge_completeness_{chat_id}"])
+
+        st.sidebar.subheader("📊 Non-LLM Scores")
+        if st.session_state[f"exact_match_score_{chat_id}"] is not None:
+            st.sidebar.metric("Exact Match ↗", st.session_state[f"exact_match_score_{chat_id}"])
+        if st.session_state[f"levenshtein_score_{chat_id}"] is not None:
+            st.sidebar.metric("Levenshtein ↗", st.session_state[f"levenshtein_score_{chat_id}"])
 
         # Documents Section
         st.subheader("📑 Documents")

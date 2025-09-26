@@ -1,0 +1,1089 @@
+Reference
+/
+Autoevals library
+Copy
+autoevals
+Autoevals is a comprehensive toolkit for evaluating AI model outputs.
+
+This library provides a collection of specialized scorers for different types of evaluations:
+
+string: Text similarity using edit distance or embeddings
+llm: LLM-based evaluation for correctness, complexity, security, etc.
+moderation: Content safety and policy compliance checks
+ragas: Advanced NLP metrics for RAG system evaluation
+json: JSON validation and structural comparison
+number: Numeric similarity with relative scaling
+value: Exact matching and basic comparisons
+Key features:
+
+Both sync and async evaluation support
+Configurable scoring parameters
+Detailed feedback through metadata
+Integration with OpenAI and other LLM providers through Braintrust AI Proxy
+Client setup:
+
+There are two ways to configure the OpenAI client:
+
+Global initialization (recommended):
+
+from autoevals import init
+from openai import AsyncOpenAI
+ 
+# Set up once at the start of your application
+client = AsyncOpenAI()
+init(client=client)
+Per-evaluator initialization:
+
+from openai import AsyncOpenAI
+from autoevals.ragas import CloseQA
+ 
+# Pass client directly to evaluator
+client = AsyncOpenAI()
+evaluator = CloseQA(client=client)
+Multi-provider support via the Braintrust AI Proxy:
+
+Autoevals supports multiple LLM providers (Anthropic, Azure, etc.) through the Braintrust AI Proxy. Configure your client to use the proxy:
+
+
+import os
+from openai import AsyncOpenAI
+from autoevals.llm import Factuality
+ 
+# Configure client to use Braintrust AI Proxy
+client = AsyncOpenAI(
+    base_url="https://api.braintrustproxy.com/v1",
+    api_key=os.getenv("BRAINTRUST_API_KEY"),
+)
+ 
+# Use with any evaluator
+evaluator = Factuality(client=client)
+Braintrust integration:
+
+Autoevals automatically integrates with Braintrust logging when you install the library. If needed, you can manually wrap the client:
+
+
+from openai import AsyncOpenAI
+from braintrust import wrap_openai
+from autoevals.ragas import CloseQA
+ 
+# Explicitly wrap the client if needed
+client = wrap_openai(AsyncOpenAI())
+evaluator = CloseQA(client=client)
+Example Autoevals usage:
+
+
+from autoevals.ragas import CloseQA
+import asyncio
+ 
+async def evaluate_qa():
+    # Create evaluator for question answering
+    evaluator = CloseQA()
+ 
+    # Question and context
+    question = "What was the purpose of the Apollo missions?"
+    context = '''
+    The Apollo program was a NASA space program that ran from 1961 to 1972,
+    with the goal of landing humans on the Moon and bringing them safely back
+    to Earth. The program achieved its most famous success when Apollo 11
+    astronauts Neil Armstrong and Buzz Aldrin became the first humans to walk
+    on the Moon on July 20, 1969.
+    '''
+ 
+    # Two different answers to evaluate
+    answer = "The Apollo program's main goal was to land humans on the Moon and return them safely to Earth."
+    expected = "The Apollo missions were designed to achieve human lunar landing and safe return."
+ 
+    # Evaluate the answer
+    result = await evaluator.eval_async(
+        question=question,
+        context=context,
+        output=answer,
+        expected=expected
+    )
+ 
+    print(f"Score: {result.score}")  # Semantic similarity score (0-1)
+    print(f"Rationale: {result.metadata.rationale}")  # Detailed explanation
+    print(f"Faithfulness: {result.metadata.faithfulness}")  # Context alignment
+ 
+# Run async evaluation
+asyncio.run(evaluate_qa())
+See individual module documentation for detailed usage and options.
+
+autoevals.llm
+LLM-based evaluation scorers for assessing model outputs.
+
+This module provides a collection of pre-built LLM scorers for common evaluation tasks.
+
+All evaluators accept the following common arguments:
+
+model: Model to use (defaults to gpt-4)
+temperature: Controls randomness (0-1, defaults to 0)
+client: OpenAI client (defaults to global client from init())
+Example:
+
+
+from openai import OpenAI
+from autoevals import Battle, Factuality, ClosedQA, init
+ 
+# Initialize with your OpenAI client (or pass client= to individual scorers)
+init(OpenAI())
+ 
+# Compare solutions
+battle = Battle()
+result = battle.eval(
+    instructions="Write a function to sort a list",
+    output="def quicksort(arr): ...",
+    expected="def bubblesort(arr): ..."
+)
+print(result.score)  # 1 if better, 0 if worse
+print(result.metadata["rationale"])  # Explanation of comparison
+ 
+# Check factual accuracy
+factual = Factuality()
+result = factual.eval(
+    output="Paris is the largest city in France",
+    expected="Paris is the capital and largest city in France"
+)
+print(result.score)  # 1 if accurate, 0 if inaccurate
+ 
+# Evaluate answer correctness
+qa = ClosedQA()
+result = qa.eval(
+    input="What is the capital of France?",
+    output="Paris",
+    criteria="Must be exact city name"
+)
+print(result.score)  # 1 if correct, 0 if incorrect
+
+
+LLMClassifier
+High-level classifier for evaluating text using LLMs.
+
+This is the main class for building custom classifiers. It provides:
+
+Chain of thought reasoning for better accuracy
+Standardized output parsing
+Template-based prompts
+YAML configuration support
+Flexible scoring rules
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.llm import LLMClassifier
+ 
+# Create a classifier for toxicity evaluation
+classifier = LLMClassifier(
+    name="toxicity",  # Name for tracking
+    prompt_template="Rate if this text is toxic: {{output}}",  # Template with variables
+    choice_scores={"toxic": 0, "not_toxic": 1},  # Mapping choices to scores
+    client=OpenAI()  # Optional: could use init() to set a global client instead
+)
+ 
+# Evaluate some text
+result = classifier.eval(output="some text to evaluate")
+print(result.score)  # Score between 0-1 based on choice_scores
+print(result.metadata)  # Additional evaluation details
+Arguments:
+
+name - Classifier name for tracking
+prompt_template - Template for generating prompts (supports {{output}}, {{expected}}, etc.)
+choice_scores - Mapping of choices to scores (e.g. {"good": 1, "bad": 0})
+model - Model to use. Defaults to DEFAULT_MODEL.
+use_cot - Enable chain of thought reasoning. Defaults to True.
+max_tokens - Maximum tokens to generate. Defaults to 512.
+temperature - Controls randomness (0-1). Defaults to 0.
+engine - Deprecated by OpenAI. Use model instead.
+api_key - Deprecated. Use client instead.
+base_url - Deprecated. Use client instead.
+client - OpenAI client. If not provided, uses global client from init().
+**extra_render_args - Additional template variables
+Battle
+Compare if a solution performs better than a reference solution.
+
+This evaluator uses LLM-based comparison to determine if a generated solution is better than a reference solution, considering factors like:
+
+Code quality and readability
+Algorithm efficiency and complexity
+Implementation completeness
+Best practices and patterns
+Error handling and edge cases
+Example:
+
+
+import asyncio
+from openai import AsyncOpenAI
+from autoevals import Battle
+ 
+async def evaluate_solutions():
+    # Initialize with async client
+    client = AsyncOpenAI()
+    battle = Battle(client=client)
+ 
+    result = await battle.eval_async(
+        instructions="Write a function to sort a list of integers in ascending order",
+        output='''
+            def quicksort(arr):
+                if len(arr) <= 1:
+                    return arr
+                pivot = arr[len(arr) // 2]
+                left = [x for x in arr if x < pivot]
+                middle = [x for x in arr if x == pivot]
+                right = [x for x in arr if x > pivot]
+                return quicksort(left) + middle + quicksort(right)
+        ''',
+        expected='''
+            def bubblesort(arr):
+                n = len(arr)
+                for i in range(n):
+                    for j in range(0, n - i - 1):
+                        if arr[j] > arr[j + 1]:
+                            arr[j], arr[j + 1] = arr[j + 1], arr[j]
+                return arr
+        '''
+    )
+ 
+    print(result.score)  # 1 if output is better, 0 if worse
+    print(result.metadata["rationale"])  # Detailed comparison explanation
+    print(result.metadata["choice"])  # Selected choice (better/worse)
+ 
+# Run the async evaluation
+asyncio.run(evaluate_solutions())
+Arguments:
+
+instructions - Problem description or task requirements that both solutions should address
+output - Solution to evaluate (code, text, or other content)
+expected - Reference solution to compare against
+Returns:
+
+Score object with:
+
+score: 1 if output solution is better, 0 if worse
+metadata.rationale: Detailed explanation of the comparison
+metadata.choice: Selected choice (better/worse)
+ClosedQA
+Evaluate answer correctness using the model's knowledge.
+
+Example:
+
+
+from autoevals import ClosedQA, init
+from openai import OpenAI
+ 
+init(OpenAI())
+ 
+qa = ClosedQA()
+result = qa.eval(
+    input="What is the capital of France?",
+    output="Paris",
+    criteria="Must be exact city name"
+)
+print(result.score)  # 1 if correct, 0 if incorrect
+Arguments:
+
+input - Question to evaluate
+output - Answer to assess
+criteria - Optional evaluation criteria
+Humor
+Rate the humor level in text.
+
+Example:
+
+
+from autoevals import Humor, init
+from openai import OpenAI
+ 
+init(OpenAI())
+ 
+humor = Humor()
+result = humor.eval(
+    output="Why did the developer quit? They didn't get arrays!"
+)
+print(result.score)  # 1 if funny, 0 if not
+print(result.metadata["rationale"])  # Explanation
+Arguments:
+
+output - Text to evaluate for humor
+Factuality
+Check factual accuracy against a reference.
+
+Example:
+
+
+from autoevals import Factuality, init
+from openai import OpenAI
+ 
+init(OpenAI())
+ 
+factual = Factuality()
+result = factual.eval(
+    output="Paris is the largest city in France",
+    expected="Paris is the capital and largest city in France"
+)
+print(result.score)  # 1 if accurate, 0 if inaccurate
+Arguments:
+
+output - Text to check
+expected - Reference text with correct facts
+Possible
+Evaluate if a solution is feasible and practical.
+
+Example:
+
+
+from autoevals import Possible, init
+from openai import OpenAI
+ 
+init(OpenAI())
+ 
+possible = Possible()
+result = possible.eval(
+    input="Design a system to handle 1M users",
+    output="We'll use a distributed architecture..."
+)
+print(result.score)  # 1 if feasible, 0 if not
+Arguments:
+
+input - Problem description
+output - Proposed solution
+Security
+Evaluate if a solution has security vulnerabilities.
+
+This evaluator uses LLM-based analysis to identify potential security issues in code or system designs, checking for common vulnerabilities like:
+
+Injection attacks (SQL, command, etc.)
+Authentication/authorization flaws
+Data exposure risks
+Input validation issues
+Unsafe dependencies
+Insecure configurations
+Common OWASP vulnerabilities
+Example:
+
+
+import asyncio
+from openai import AsyncOpenAI
+from autoevals import Security
+ 
+async def evaluate_security():
+    # Initialize with async client
+    client = AsyncOpenAI()
+    security = Security(client=client)
+ 
+    result = await security.eval_async(
+        instructions="Write a function to execute a SQL query with user input",
+        output='''
+            def execute_query(user_input):
+                query = f"SELECT * FROM users WHERE name = '{user_input}'"
+                cursor.execute(query)
+                return cursor.fetchall()
+        '''
+    )
+ 
+    print(result.score)  # 0 if vulnerable, 1 if secure
+    print(result.metadata["rationale"])  # Detailed security analysis
+    print(result.metadata["choice"])  # Selected choice (secure/vulnerable)
+ 
+# Run the async evaluation
+asyncio.run(evaluate_security())
+Arguments:
+
+instructions - Context or requirements for the security evaluation
+output - Code or system design to evaluate for security issues
+Returns:
+
+Score object with:
+
+score: 1 if secure, 0 if vulnerable
+metadata.rationale: Detailed security analysis
+metadata.choice: Selected choice (secure/vulnerable)
+metadata.vulnerabilities: List of identified security issues
+Sql
+Compare if two SQL queries are equivalent.
+
+Example:
+
+
+from autoevals import Sql, init
+from openai import OpenAI
+ 
+init(OpenAI())
+ 
+sql = Sql()
+result = sql.eval(
+    output="SELECT * FROM users WHERE age >= 18",
+    expected="SELECT * FROM users WHERE age > 17"
+)
+print(result.score)  # 1 if equivalent, 0 if different
+Arguments:
+
+output - SQL query to check
+expected - Reference SQL query
+Summary
+Evaluate text summarization quality.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import Summary, init
+ 
+init(OpenAI())
+ 
+summary = Summary()
+result = summary.eval(
+    input="Long article text...",
+    output="Brief summary...",
+    expected="Reference summary..."
+)
+print(result.score)  # Higher is better
+Arguments:
+
+input - Original text
+output - Generated summary
+expected - Reference summary
+Translation
+Evaluate translation quality.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import Translation
+ 
+translation = Translation(client=OpenAI())
+result = translation.eval(
+    input="Hello world!",
+    output="¡Hola mundo!",
+    expected="¡Hola mundo!",
+    language="Spanish"
+)
+ 
+print(result.score)  # Higher is better
+Arguments:
+
+input - Source text
+output - Translation to evaluate
+expected - Reference translation
+language - Target language
+autoevals.ragas
+This module provides evaluators for assessing the quality of context retrieval and answer generation. These metrics are ported from the RAGAS project with some enhancements.
+
+Context quality evaluators:
+
+ContextEntityRecall: Measures how well context contains expected entities
+ContextRelevancy: Evaluates relevance of context to question
+ContextRecall: Checks if context supports expected answer
+ContextPrecision: Measures precision of context relative to question
+Answer quality evaluators:
+
+Faithfulness: Checks if answer claims are supported by context
+AnswerRelevancy: Measures answer relevance to question
+AnswerSimilarity: Compares semantic similarity to expected answer
+AnswerCorrectness: Evaluates factual correctness against ground truth
+Common arguments:
+
+model: Model to use for evaluation, defaults to DEFAULT_RAGAS_MODEL (gpt-3.5-turbo-16k)
+client: Optional Client for API calls. If not provided, uses global client from init()
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.ragas import (
+    ContextRelevancy,
+    Faithfulness,
+)
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+# Evaluate context relevance
+relevancy = ContextRelevancy()
+result = relevancy.eval(
+    input="What is the capital of France?",
+    output="Paris is the capital of France",
+    context="Paris is the capital of France. The city is known for the Eiffel Tower."
+)
+print(f"Context relevance score: {result.score}")  # 1.0 for highly relevant
+ 
+# Check answer faithfulness to context
+faithfulness = Faithfulness()
+result = faithfulness.eval(
+    input="What is France's capital city?",
+    output="Paris is the capital of France and has the Eiffel Tower",
+    context="Paris is the capital of France. The city is known for the Eiffel Tower."
+)
+print(f"Faithfulness score: {result.score}")  # 1.0 for fully supported claims
+For more examples and detailed usage of each evaluator, see their individual class docstrings.
+
+ContextEntityRecall
+Measures how well the context contains the entities mentioned in the expected answer.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.ragas import ContextEntityRecall
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+recall = ContextEntityRecall()
+result = recall.eval(
+    expected="The capital of France is Paris and its population is 2.2 million",
+    context="Paris is a major city in France with a population of 2.2 million people. As the capital city, it is known for the Eiffel Tower."
+)
+print(result.score)  # Score between 0-1, higher means more entities from expected answer found in context
+print(result.metadata["entities"])  # List of entities found and their overlap
+Arguments:
+
+expected - The expected/ground truth answer containing entities to find
+context - The context document(s) to search for entities in
+ContextRelevancy
+Evaluates how relevant the context is to the input question.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.ragas import ContextRelevancy
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+relevancy = ContextRelevancy()
+result = relevancy.eval(
+    input="What is the capital of France?",
+    output="Paris is the capital of France",
+    context="Paris is the capital of France. The city is known for the Eiffel Tower."
+)
+print(result.score)  # Score between 0-1, higher means more relevant context
+print(result.metadata["relevant_sentences"])  # List of relevant sentences found
+Arguments:
+
+input - The question being evaluated
+output - The generated answer
+context - The context document(s) to evaluate
+ContextRecall
+Measures how well the context supports the expected answer.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.ragas import ContextRecall
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+recall = ContextRecall()
+result = recall.eval(
+    input="What is the capital of France?",
+    output="Paris is the capital of France",  # The generated answer
+    expected="Paris is the capital of France",
+    context="Paris is the capital of France. The city is known for the Eiffel Tower."
+)
+print(result.score)  # Score between 0-1, higher means better context recall
+print(result.metadata["recall"])  # Detailed recall analysis
+Arguments:
+
+input - The question being evaluated
+output - The generated answer
+expected - The expected/ground truth answer
+context - The context document(s) to evaluate
+ContextPrecision
+Measures how precise and focused the context is for answering the question.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.ragas import ContextPrecision
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+precision = ContextPrecision()
+result = precision.eval(
+    input="What is the capital of France?",
+    output="Paris is the capital of France",  # The generated answer
+    expected="Paris is the capital of France",
+    context="Paris is the capital of France. The city is known for the Eiffel Tower."
+)
+print(result.score)  # Score between 0-1, higher means more precise context
+print(result.metadata["precision"])  # Detailed precision analysis
+Arguments:
+
+input - The question being evaluated
+output - The generated answer
+expected - The expected/ground truth answer
+context - The context document(s) to evaluate
+Faithfulness
+Evaluates if the generated answer is faithful to the given context.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.ragas import Faithfulness
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+faithfulness = Faithfulness()
+result = faithfulness.eval(
+    input="What is the capital of France?",
+    output="Paris is the capital of France",  # The generated answer to evaluate
+    context="Paris is the capital of France. The city is known for the Eiffel Tower."
+)
+print(result.score)  # Score between 0-1, higher means more faithful to context
+print(result.metadata["faithfulness"])  # Detailed faithfulness analysis
+Arguments:
+
+input - The question being evaluated
+output - The generated answer to evaluate
+context - The context document(s) to evaluate against
+AnswerRelevancy
+Evaluates how relevant the generated answer is to the input question.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.ragas import AnswerRelevancy
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+relevancy = AnswerRelevancy()
+result = relevancy.eval(
+    input="What is the capital of France?",
+    output="Paris is the capital of France",  # The generated answer to evaluate
+    context="Paris is the capital of France. The city is known for the Eiffel Tower.",
+    strictness=0.7,  # Optional: higher values enforce stricter relevancy
+    temperature=0.2  # Optional: lower values make evaluation more deterministic
+)
+print(result.score)  # Score between 0-1, higher means more relevant answer
+print(result.metadata["relevancy"])  # Detailed relevancy analysis
+Arguments:
+
+input - The question being evaluated
+output - The generated answer to evaluate
+context - The context document(s) to evaluate against
+strictness - Optional float between 0-1, higher values enforce stricter relevancy
+temperature - Optional float between 0-1, lower values make evaluation more deterministic
+embedding_model - Optional model to use for embeddings, defaults to text-embedding-3-small
+AnswerSimilarity
+Evaluates how semantically similar the generated answer is to the expected answer.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.ragas import AnswerSimilarity
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+similarity = AnswerSimilarity()
+result = similarity.eval(
+    output="Paris is the capital of France",  # The generated answer to evaluate
+    expected="The capital city of France is Paris",
+    embedding_model="text-embedding-3-small"  # Optional: specify embedding model
+)
+print(result.score)  # Score between 0-1, higher means more similar answers
+print(result.metadata["similarity"])  # Detailed similarity analysis
+Arguments:
+
+output - The generated answer to evaluate
+expected - The expected/ground truth answer
+embedding_model - Optional model to use for embeddings, defaults to text-embedding-3-small
+AnswerCorrectness
+Evaluates how correct the generated answer is compared to the expected answer.
+
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.ragas import AnswerCorrectness
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+correctness = AnswerCorrectness()
+result = correctness.eval(
+    input="What is the capital of France?",
+    output="Paris is the capital of France",  # The generated answer to evaluate
+    expected="The capital city of France is Paris",
+    factuality_weight=0.7,  # Optional: weight for factual correctness
+    answer_similarity_weight=0.3  # Optional: weight for answer similarity
+)
+print(result.score)  # Score between 0-1, higher means more correct answer
+print(result.metadata["correctness"])  # Detailed correctness analysis
+Arguments:
+
+input - The question being evaluated
+output - The generated answer to evaluate
+expected - The expected/ground truth answer
+factuality_weight - Optional float between 0-1 for factual correctness weight
+answer_similarity_weight - Optional float between 0-1 for answer similarity weight
+answer_similarity - Optional AnswerSimilarity instance for similarity evaluation
+autoevals.moderation
+Moderation
+A scorer that evaluates if AI responses contain inappropriate or unsafe content.
+
+This scorer uses OpenAI's moderation API to check for potentially harmful content in text. It returns a score of 0 if content is flagged as inappropriate, and 1 if it passes moderation.
+
+Arguments:
+
+threshold - Optional float to set a custom threshold for content flagging. If None, uses OpenAI's default flagging logic. If set, content is flagged if any category score exceeds this threshold.
+client - Optional client for making API calls. Can be:
+None: Uses global client from init()
+OpenAI v1 client: Used directly
+OpenAI v0 module: Wrapped in a client adapter
+Example:
+
+
+from openai import OpenAI
+from autoevals import init
+from autoevals.moderation import Moderation
+ 
+# Initialize with your OpenAI client
+init(OpenAI())
+ 
+# Create evaluator with default settings
+moderator = Moderation()
+result = moderator.eval(
+    output="This is the text to check for inappropriate content"
+)
+print(result.score)  # 1 if content is appropriate, 0 if flagged
+print(result.metadata)  # Detailed category scores and threshold used
+__init__
+
+def __init__(threshold=None,
+             api_key=None,
+             base_url=None,
+             client: Optional[Client] = None)
+Initialize a Moderation scorer.
+
+Arguments:
+
+threshold - Optional float to set a custom threshold for content flagging. If None, uses OpenAI's default flagging logic. If set, content is flagged if any category score exceeds this threshold.
+client - Optional client for making API calls. Can be:
+None: Uses global client from init()
+OpenAI v1 client: Used directly
+OpenAI v0 module: Wrapped in a client adapter
+api_key - Deprecated. Use client instead.
+base_url - Deprecated. Use client instead.
+Notes:
+
+The api_key and base_url parameters are deprecated and will be removed in a future version. Instead, you can either:
+
+Pass a client instance directly to this constructor using the client parameter
+Set a global client using autoevals.init(client=your_client)
+The global client can be configured once and will be used by all evaluators that don't have a specific client passed to them.
+
+autoevals.string
+String evaluation scorers for comparing text similarity.
+
+This module provides scorers for text comparison:
+
+Levenshtein: Compare strings using edit distance
+
+Fast, local string comparison
+Suitable for exact matches and small variations
+No external dependencies
+Simple to use with just output/expected parameters
+EmbeddingSimilarity: Compare strings using embeddings
+
+Semantic similarity using embeddings
+Requires OpenAI API access
+Better for comparing meaning rather than exact matches
+Supports both sync and async evaluation
+Built-in caching for efficiency
+Configurable with options for model, prefix, thresholds
+Levenshtein
+String similarity scorer using edit distance.
+
+Example:
+
+
+scorer = Levenshtein()
+result = scorer.eval(
+    output="hello wrld",
+    expected="hello world"
+)
+print(result.score)  # 0.9 (normalized similarity)
+Arguments:
+
+output - String to evaluate
+expected - Reference string to compare against
+Returns:
+
+Score object with normalized similarity (0-1), where 1 means identical strings
+
+EmbeddingSimilarity
+String similarity scorer using embeddings.
+
+Example:
+
+
+import asyncio
+from openai import AsyncOpenAI
+from autoevals.string import EmbeddingSimilarity
+ 
+async def compare_texts():
+    # Initialize with async client
+    client = AsyncOpenAI()
+    scorer = EmbeddingSimilarity(
+        prefix="Code explanation: ",
+        client=client
+    )
+ 
+    result = await scorer.eval_async(
+        output="The function sorts elements using quicksort",
+        expected="The function implements quicksort algorithm"
+    )
+ 
+    print(result.score)  # 0.85 (normalized similarity)
+    print(result.metadata)  # Additional comparison details
+ 
+# Run the async evaluation
+asyncio.run(compare_texts())
+Arguments:
+
+prefix - Optional text to prepend to inputs for domain context
+model - Embedding model to use (default: text-embedding-ada-002)
+expected_min - Minimum similarity threshold (default: 0.7)
+client - Optional AsyncOpenAI/OpenAI client. If not provided, uses global client from init()
+Returns:
+
+Score object with:
+
+score: Normalized similarity (0-1)
+metadata: Additional comparison details
+autoevals.number
+Numeric evaluation scorers for comparing numerical values.
+
+This module provides scorers for working with numbers:
+
+NumericDiff: Compare numbers using normalized difference, providing a similarity score that accounts for both absolute and relative differences between values.
+Features:
+
+Normalized scoring between 0 and 1
+Handles special cases like comparing zeros
+Accounts for magnitude when computing differences
+Suitable for both small and large number comparisons
+NumericDiff
+Numeric similarity scorer using normalized difference.
+
+Example:
+
+
+scorer = NumericDiff()
+result = scorer.eval(
+    output=105,
+    expected=100
+)
+print(result.score)  # 0.95 (normalized similarity)
+Arguments:
+
+output - Number to evaluate
+expected - Reference number to compare against
+Returns:
+
+Score object with normalized similarity (0-1), where:
+
+1 means identical numbers
+Score decreases as difference increases relative to magnitude
+Special case: score=1 when both numbers are 0
+autoevals.json
+JSON evaluation scorers for comparing and validating JSON data.
+
+This module provides scorers for working with JSON data:
+
+JSONDiff: Compare JSON objects for structural and content similarity
+
+Handles nested structures, strings, numbers
+Customizable with different scorers for string and number comparisons
+Can automatically parse JSON strings
+ValidJSON: Validate if a string is valid JSON and matches an optional schema
+
+Validates JSON syntax
+Optional JSON Schema validation
+Works with both strings and parsed objects
+JSONDiff
+Compare JSON objects for structural and content similarity.
+
+This scorer recursively compares JSON objects, handling:
+
+Nested dictionaries and lists
+String similarity using Levenshtein distance
+Numeric value comparison
+Automatic parsing of JSON strings
+Example:
+
+
+import asyncio
+from openai import AsyncOpenAI
+from autoevals import JSONDiff
+from autoevals.string import EmbeddingSimilarity
+ 
+async def compare_json():
+    # Initialize with async client for string comparison
+    client = AsyncOpenAI()
+    string_scorer = EmbeddingSimilarity(client=client)
+ 
+    diff = JSONDiff(string_scorer=string_scorer)
+ 
+    result = await diff.eval_async(
+        output={
+            "name": "John Smith",
+            "age": 30,
+            "skills": ["python", "javascript"]
+        },
+        expected={
+            "name": "John A. Smith",
+            "age": 31,
+            "skills": ["python", "typescript"]
+        }
+    )
+ 
+    print(result.score)  # Similarity score between 0-1
+    print(result.metadata)  # Detailed comparison breakdown
+ 
+# Run the async evaluation
+asyncio.run(compare_json())
+Arguments:
+
+string_scorer - Optional custom scorer for string comparisons (default: Levenshtein)
+number_scorer - Optional custom scorer for number comparisons (default: NumericDiff)
+preserve_strings - Don't attempt to parse strings as JSON (default: False)
+Returns:
+
+Score object with:
+
+score: Similarity score between 0-1
+metadata: Detailed comparison breakdown
+ValidJSON
+Validate if a string is valid JSON and optionally matches a schema.
+
+This scorer checks if:
+
+The input can be parsed as valid JSON
+The parsed JSON matches an optional JSON Schema
+Handles both string inputs and pre-parsed JSON objects
+Example:
+
+
+import asyncio
+from autoevals import ValidJSON
+ 
+async def validate_json():
+    # Define a schema to validate against
+    schema = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "age": {"type": "number"},
+            "skills": {
+                "type": "array",
+                "items": {"type": "string"}
+            }
+        },
+        "required": ["name", "age"]
+    }
+ 
+    validator = ValidJSON(schema=schema)
+ 
+    result = await validator.eval_async(
+        output='''
+        {
+            "name": "John Smith",
+            "age": 30,
+            "skills": ["python", "javascript"]
+        }
+        '''
+    )
+ 
+    print(result.score)  # 1 if valid, 0 if invalid
+    print(result.metadata)  # Validation details or error messages
+ 
+# Run the async validation
+asyncio.run(validate_json())
+Arguments:
+
+schema - Optional JSON Schema to validate against
+Returns:
+
+Score object with:
+
+score: 1 if valid JSON (and matches schema if provided), 0 otherwise
+metadata: Validation details or error messages
+autoevals.value
+Value comparison utilities for exact matching and normalization.
+
+This module provides tools for exact value comparison with smart handling of different data types:
+
+ExactMatch: A scorer for exact value comparison
+Handles primitive types (strings, numbers, etc.)
+Smart JSON serialization for objects and arrays
+Normalizes JSON strings for consistent comparison
+Example:
+
+
+from autoevals import ExactMatch
+ 
+# Simple value comparison
+scorer = ExactMatch()
+result = scorer.eval(
+    output="hello",
+    expected="hello"
+)
+print(result.score)  # 1.0 for exact match
+ 
+# Object comparison (automatically normalized)
+result = scorer.eval(
+    output={"name": "John", "age": 30},
+    expected='{"age": 30, "name": "John"}'  # Different order but same content
+)
+print(result.score)  # 1.0 for equivalent JSON
+ 
+# Array comparison
+result = scorer.eval(
+    output=[1, 2, 3],
+    expected="[1, 2, 3]"  # String or native types work
+)
+print(result.score)  # 1.0 for equivalent arrays
+ExactMatch
+A scorer that tests for exact equality between values.
+
+This scorer handles various input types:
+
+Primitive values (strings, numbers, etc.)
+JSON objects (dicts) and arrays (lists)
+JSON strings that can be parsed into objects/arrays
+The comparison process:
+
+Detects if either value is/might be a JSON object/array
+Normalizes both values (serialization if needed)
+Performs exact string comparison
+Arguments:
+
+output - Value to evaluate
+expected - Reference value to compare against
+Returns:
+
+Score object with:
+
+score: 1.0 for exact match, 0.0 otherwise

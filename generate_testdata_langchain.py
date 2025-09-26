@@ -9,12 +9,13 @@ import os
 import environ
 from ragas.testset.graph import KnowledgeGraph
 from ragas.testset.graph import Node, NodeType
-from ragas.testset.transforms import apply_transforms
+from ragas.testset.transforms import apply_transforms, default_transforms
 from ragas.testset.transforms import HeadlinesExtractor, HeadlineSplitter, KeyphrasesExtractor
 from ragas.testset.persona import Persona
 from ragas.testset.synthesizers.single_hop.specific import (
     SingleHopSpecificQuerySynthesizer,
 )
+from ragas.testset.synthesizers import MultiHopSpecificQuerySynthesizer
 
 # Load environment variables
 env = environ.Env()
@@ -57,35 +58,48 @@ def create_ragas_testdata_kg():
         kg
         kg.save("knowledge_graph.json")
 
-        headline_extractor = HeadlinesExtractor(llm=ragas_llm, max_num=20)
-        headline_splitter = HeadlineSplitter(max_tokens=1500)
-        keyphrase_extractor = KeyphrasesExtractor(llm=ragas_llm)
+        # headline_extractor = HeadlinesExtractor(llm=ragas_llm, max_num=20)
+        # headline_splitter = HeadlineSplitter(max_tokens=1500)
+        # keyphrase_extractor = KeyphrasesExtractor(llm=ragas_llm)
 
-        transforms = [
-            headline_extractor,
-            headline_splitter,
-            keyphrase_extractor
-        ]
+        # transforms = [
+        #     headline_extractor,
+        #     headline_splitter,
+        #     keyphrase_extractor
+        # ]
+
+        transforms = default_transforms(
+            documents=docs,
+            llm=ragas_llm,
+            embedding_model=ragas_embeddings
+            )
 
         apply_transforms(kg, transforms=transforms)
 
         persona_simple_user = Persona(
-            name="Simple User",
-            role_description="Is a simple user, who wants to know about RAG and AI.",
+            name="Technical User",
+            role_description="A technical user interested in AI, RAG systems, and document analysis."
         )
         personas = [persona_simple_user]
 
-        query_distibution = [
-            (
-                SingleHopSpecificQuerySynthesizer(llm=ragas_llm, property_name="headlines"),
-                0.5,
-            ),
-            (
-                SingleHopSpecificQuerySynthesizer(
-                llm=ragas_llm, property_name="keyphrases"
-            ),
-                0.5,
-            ),
+        # query_distribution = [
+        #     (
+        #         SingleHopSpecificQuerySynthesizer(llm=ragas_llm, property_name="headlines"),
+        #         0.5,
+        #     ),
+        #     (
+        #         SingleHopSpecificQuerySynthesizer(
+        #         llm=ragas_llm, property_name="keyphrases"
+        #     ),
+        #         0.5,
+        #     ),
+        # ]
+
+        
+        # Alternative: If you want to try multihop, ensure proper knowledge graph setup
+        query_distribution = [
+            (SingleHopSpecificQuerySynthesizer(llm=ragas_llm), 0.6),
+            (MultiHopSpecificQuerySynthesizer(llm=ragas_llm), 0.4)
         ]
         
         # Create test generator
@@ -94,7 +108,7 @@ def create_ragas_testdata_kg():
             llm=ragas_llm,
             embedding_model=ragas_embeddings,
             knowledge_graph=kg,
-            persona_list=personas
+            persona_list=[personas]
         )
         print("   Generator created successfully")
         
@@ -102,8 +116,8 @@ def create_ragas_testdata_kg():
         print("5. Generating test dataset (this may take a few minutes)...")
         dataset = generator.generate(
             #documents=test_docs,
-            testset_size=10,
-            query_distribution=query_distibution,
+            testset_size=5,  # Reduced size for testing
+            query_distribution=query_distribution,
             raise_exceptions=False,
             with_debugging_logs=True
         )
@@ -114,18 +128,18 @@ def create_ragas_testdata_kg():
         print("6. Saving results...")
         dataset_df = dataset.to_pandas()
         dataset_df.to_csv("TestData_From_Ragas_Langchain.csv", encoding="utf-8", index=False)
-        
+
         print(f"✅ Success! Saved {len(dataset_df)} test cases to TestData_From_Ragas_Langchain.csv")
         print(f"   Columns: {list(dataset_df.columns)}")
-        
-        return True
-        
+
+        return dataset_df
+
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
-        return False
-    
+        return None
+
 
 def create_ragas_testdata():
     print("=== RAGAS Test Data Generation (Langchain) ===")

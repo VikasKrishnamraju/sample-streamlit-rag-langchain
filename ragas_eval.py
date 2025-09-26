@@ -63,7 +63,7 @@ def eval_thr_ragas(query, answer, retrieved_contexts):
         
         # Re-enable Langfuse integration
         print("Attempting Langfuse integration...")
-        langfuse_integration(score_df)
+        langfuse_integration(score_df, dataset, data)
         
         return score
         
@@ -72,10 +72,10 @@ def eval_thr_ragas(query, answer, retrieved_contexts):
         return None
     
 
-def langfuse_integration(df):
+def langfuse_integration(df, data):
     try:
         # Configure SSL certificate bundle for enterprise environments
-        cert_bundle_path = "/Users/a0144076/sample-streamlit-rag-langchain/corp-bundle-final-complete.pem"
+        cert_bundle_path = "corp-bundle-final-complete.pem"
         if os.path.exists(cert_bundle_path):
             os.environ['SSL_CERT_FILE'] = cert_bundle_path
             os.environ['REQUESTS_CA_BUNDLE'] = cert_bundle_path
@@ -107,36 +107,58 @@ def langfuse_integration(df):
         # Test basic connectivity first
         print("Testing Langfuse connectivity...")
         
-        # Create a simple trace without complex operations
+        # Extract input/output data from the original data
+        query = data["question"][0] if data["question"] else "Unknown query"
+        answer = data["answer"][0] if data["answer"] else "Unknown answer" 
+        contexts = data["contexts"][0] if data["contexts"] else []
+        
+        # Create a comprehensive trace with input/output
         trace = langfuse.trace(
-            name="ragas_evaluation_test",
-            metadata={"source": "streamlit_app"}
+            name="ragas_evaluation_context",
+            input={"query": query, "contexts": contexts},
+            output={"answer": answer},
+            metadata={
+                "source": "streamlit_app",
+                "evaluation_framework": "ragas",
+                "metrics": ["faithfulness", "answer_relevancy"]
+            }
         )
         
         print(f"Created trace with ID: {trace.id}")
         
-        # Log a simple event instead of scores initially
-        langfuse.event(
+        # Log the RAG generation step as a span
+        generation_span = langfuse.span(
             trace_id=trace.id,
-            name="ragas_evaluation_started"
+            name="rag_generation",
+            input={"query": query, "retrieved_contexts": contexts},
+            output={"generated_answer": answer},
+            metadata={"step": "generation"}
         )
         
-        print("Basic Langfuse operations successful!")
+        # Log retrieval information
+        retrieval_span = langfuse.span(
+            trace_id=trace.id,
+            name="context_retrieval", 
+            input={"query": query},
+            output={"retrieved_contexts": contexts, "context_count": len(contexts)},
+            metadata={"step": "retrieval"}
+        )
         
-        # Now try to log the actual scores
+        print("Logged input/output data to trace")
+        
+        # Now log the evaluation scores
         score_count = 0
         for _, row in df.iterrows():
             for metric_name in ["faithfulness", "answer_relevancy"]:
                 if metric_name in row and not pd.isna(row[metric_name]):
                     print(f"Logging {metric_name} = {row[metric_name]}")
-                    # Simplified score logging
-                    langfuse.event(
+                    
+                    # Log each metric as a scored event
+                    langfuse.score(
                         trace_id=trace.id,
-                        name=f"metric_{metric_name}",
-                        metadata={
-                            "metric": metric_name,
-                            "value": float(row[metric_name])
-                        }
+                        name=metric_name,
+                        value=float(row[metric_name]),
+                        comment=f"RAGAS {metric_name} evaluation score"
                     )
                     score_count += 1
         
